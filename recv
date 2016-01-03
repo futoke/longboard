@@ -21,7 +21,7 @@
 #endif
 
 RF24 radio(7,8);
-Servo myservo;
+Servo motor;
 
 // The new types.
 typedef int16_t speed_t;
@@ -47,7 +47,7 @@ void setup()
 #endif
     radio_init();
     gpio_init();
-    servo_init();
+    motor_init();
     packet_init(); 
 }
 
@@ -70,6 +70,7 @@ void change_speed()
     
     speed_t delta_speed;
     speed_t current_speed;
+    speed_t val_speed;
      
     if (break_motor == 0) {
         if (packet.save_button == ON) {
@@ -109,13 +110,15 @@ void change_speed()
     DEBUG_PRINT("\n");
 
     if (speed < 0) {
-        speed = 0;
+        val_speed = 0;
     } else if (speed > 1023) {
-        speed = 1023;
+        val_speed = 1023;
+    } else {
+        val_speed = speed;
     }
-    
-    speed = map(speed, 0, 1023, MOTOR_MIN, MOTOR_MAX);    
-    myservo.writeMicroseconds(speed);
+     
+    val_speed = map(val_speed, 0, 1023, MOTOR_MIN, MOTOR_MAX);    
+    motor.writeMicroseconds(val_speed);
 
     
 }
@@ -135,6 +138,7 @@ void receive_packet()
         while (radio.available()) {                          
             radio.read(&packet, sizeof(packet));
         }
+        
         DEBUG_PRINT(F("Recieve "));
         DEBUG_PRINT(packet.speed);  
         DEBUG_PRINT(F(" : "));
@@ -146,9 +150,9 @@ void receive_packet()
 }
 
 // The initialization routines.
-void servo_init(void)
+void motor_init(void)
 {
-    myservo.attach(MOTOR_PIN);
+    motor.attach(MOTOR_PIN);
 }
 
 void gpio_init(void)
