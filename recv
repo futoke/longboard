@@ -8,7 +8,7 @@
 #define MOTOR_PIN             9
 #define MOTOR_MIN             850
 #define MOTOR_MAX             2300
-#define ACCELERATION          20
+#define ACCELERATION          10
 #define DEBUG                 1
 #define JITTER                10
 
@@ -20,7 +20,7 @@
     #define DEBUG_PRINT(arg)
 #endif
 
-RF24 radio(7,8);
+RF24 radio(10,18);
 Servo motor;
 
 // The new types.
@@ -158,6 +158,8 @@ void motor_init(void)
 void gpio_init(void)
 {
     pinMode(LED_OUTPUT_PIN, OUTPUT);
+    pinMode(8, OUTPUT); // Instead the Vcc pin.
+    digitalWrite(8, HIGH);
 }
 
 void uart_init(uint32_t baudrate)
@@ -168,7 +170,7 @@ void uart_init(uint32_t baudrate)
 void radio_init(void)
 {
     radio.begin();
-    radio.setPALevel(RF24_PA_LOW); // FIXME: delete in the future.
+    //radio.setPALevel(RF24_PA_LOW); // FIXME: delete in the future.
     radio.openReadingPipe(1, address);
     radio.startListening();    
 }
