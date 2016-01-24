@@ -9,10 +9,8 @@
 #define MOTOR_MIN             850
 #define MOTOR_MAX             2300
 #define ACCELERATION          10
-#define DEBUG                 1
-#define JITTER                10
+#define DEBUG                 0
 
-#define ROUND_ACCEL(x)        (((x + (ACCELERATION / 2)) / ACCELERATION) * ACCELERATION)
 
 #if defined(DEBUG) && DEBUG > 0
     #define DEBUG_PRINT(arg) Serial.print(arg)
@@ -26,6 +24,7 @@ Servo motor;
 // The new types.
 typedef int16_t speed_t;
 typedef enum {OFF = 0, ON = !OFF} button_state_t;
+typedef enum {INIT = 0, STAND, ACCEL, WATCH, DECEL} motion_state_t;
 
 typedef struct {
   speed_t speed;
@@ -35,10 +34,9 @@ typedef struct {
 
 // The global variables.
 const byte address[6] = "1Node";
-packet_t packet;
 uint32_t previous_millis = 0;
-speed_t speed = 0;
-speed_t previous_speed = 0;
+
+packet_t packet;
 
 void setup()
 {
@@ -66,61 +64,77 @@ void loop()
 
 void change_speed()
 {
-    static uint8_t break_motor = 0;
+    static motion_state_t motion_state = INIT;
+    static speed_t min_speed = 0;
+    static speed_t current_speed = 0;
+    static speed_t previous_speed = 0;
     
+    speed_t speed;
     speed_t delta_speed;
-    speed_t current_speed;
-    speed_t val_speed;
-     
-    if (break_motor == 0) {
+
+    // Calculate the potentiometer delta speed.
+    delta_speed = packet.speed - previous_speed;
+    
+    switch(motion_state) {
+    case INIT:
+        current_speed = 0;
+        if (packet.speed > 0) {
+            motion_state = STAND;
+        }
+        break;
+    case STAND:
+        current_speed = 0;
         if (packet.save_button == ON) {
-            if (ROUND_ACCEL(packet.speed) > speed) {
-                speed += ACCELERATION;
-            }
-//            } else if (ROUND_ACCEL(packet.speed) < speed) {
-//                speed = 0;
-//            }
+            current_speed = packet.speed;
+            motion_state = ACCEL;
+        }
+        break;
+    case ACCEL:
+        if (packet.save_button == ON) {
+            if (packet.speed > current_speed) {
+                current_speed += ACCELERATION;
+            }    
         } else {
-            current_speed = ROUND_ACCEL(packet.speed);
-            delta_speed = (current_speed - previous_speed);
-            
-            if (delta_speed < 0 && abs(delta_speed) > JITTER && speed >= 0) {
-                break_motor = 1;
-                speed = current_speed; 
+            current_speed = 0;
+            min_speed = packet.speed;
+            motion_state = WATCH;     
+        }
+        break;
+    case WATCH:
+        if (packet.save_button == OFF) {
+            if (delta_speed < 0 && (abs(delta_speed) > (previous_speed - min_speed))) {
+                current_speed = min_speed;
+                min_speed = 0;
+                motion_state = DECEL;      
+            }
+        } else {
+            motion_state = STAND;   
+        }
+        break;
+    case DECEL:
+        if (packet.save_button == OFF) {
+            if (current_speed > 0) {
+                current_speed -= ACCELERATION;      
             } else {
-                if (speed > 0) {
-                    speed = 0;
-                }
+                motion_state = INIT;    
             }
-            
-            previous_speed = current_speed;
-        }
-    } else {
-        if (ROUND_ACCEL(speed) > ACCELERATION) {
-            speed -= ACCELERATION;    
         } else {
-            break_motor = 0;
-            previous_speed = 0;
-            speed = -1;
+            motion_state = STAND;   
         }
+        break;
+    default:
+        break;
     }
+
+    previous_speed = packet.speed;
     
     DEBUG_PRINT(F("SPEED "));
-    DEBUG_PRINT(speed);  
+    DEBUG_PRINT(current_speed);  
     DEBUG_PRINT("\n");
-
-    if (speed < 0) {
-        val_speed = 0;
-    } else if (speed > 1023) {
-        val_speed = 1023;
-    } else {
-        val_speed = speed;
-    }
-     
-    val_speed = map(val_speed, 0, 1023, MOTOR_MIN, MOTOR_MAX);    
-    motor.writeMicroseconds(val_speed);
-
     
+    speed = constrain(current_speed, 0, 1023);
+    speed = map(speed, 0, 1023, MOTOR_MIN, MOTOR_MAX);    
+    motor.writeMicroseconds(speed);   
 }
 
 void change_led_state()
@@ -170,7 +184,6 @@ void uart_init(uint32_t baudrate)
 void radio_init(void)
 {
     radio.begin();
-    //radio.setPALevel(RF24_PA_LOW); // FIXME: delete in the future.
     radio.openReadingPipe(1, address);
     radio.startListening();    
 }
