@@ -30,9 +30,14 @@ typedef struct {
   button_state_t led_button;
 } packet_t;
 
+typedef struct {
+  float frequency;  
+} telemetry_t;
+
 // The global variables.
-const byte address[6] = "1Node";
+const byte addresses[][6] = {"trans", "recv"};
 volatile packet_t packet;
+telemetry_t telemetry;
 uint32_t previous_millis = 0;
 uint32_t button_time = 0;  
 uint32_t last_button_time = 0;
@@ -45,6 +50,7 @@ void setup()
     radio_init();
     gpio_init();
     packet_init();
+    telemetry_init();
 }
 
 void loop()
@@ -57,9 +63,7 @@ void loop()
         read_pot();
         read_save_state();
         send_packet();
-    }
-
-    
+    }   
 }
 
 void send_packet() 
@@ -72,10 +76,24 @@ void send_packet()
     DEBUG_PRINT(packet.led_button);
     DEBUG_PRINT("\n");
 
+    radio.stopListening();
+
     if (!radio.write((const void*)&packet, sizeof(packet))) {
         DEBUG_PRINT(F("failed"));
         DEBUG_PRINT("\n");
-    }    
+    }
+
+    radio.startListening();
+}
+
+void read_telemetry()
+{
+    if(radio.available()){
+        radio.read(&telemetry, sizeof(telemetry));
+        DEBUG_PRINT(F("Telemetry (frequency): "));
+        DEBUG_PRINT(telemetry.frequency);
+        DEBUG_PRINT("\n");
+      }
 }
 
 void read_led_state()
@@ -125,8 +143,10 @@ void radio_init(void)
 {
     radio.begin();
     radio.setPALevel(RF24_PA_LOW); // FIXME: delete in the future.
-    radio.openWritingPipe(address);
-    radio.stopListening();    
+    radio.openWritingPipe(addresses[0]);
+    radio.openReadingPipe(1,addresses[1]);
+    radio.startListening();
+    delay(10000);   
 }
 
 void packet_init()
@@ -134,4 +154,9 @@ void packet_init()
     packet.speed = 0;
     packet.save_button = OFF;
     packet.led_button = OFF;   
+}
+
+void telemetry_init()
+{
+    telemetry.frequency = 0;  
 }

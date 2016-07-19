@@ -36,14 +36,19 @@ typedef struct {
   button_state_t save_button;
 } packet_t;
 
+typedef struct {
+  float frequency;  
+} telemetry_t;
+
 // Global 
 double sum = 0;
 int count = 0;
-const byte address[6] = "1Node"; 
+const byte addresses[][6] = {"trans", "recv"};
 uint32_t previous_millis = 0;
 uint32_t delta_millis = 0;
 speed_t previous_speed = 0;
 
+volatile telemetry_t telemetry;
 packet_t packet;
 
 void setup()
@@ -55,6 +60,7 @@ void setup()
 //  gpio_init(); // remove it in case LED is not used (for MVP version)?
   motor_init();
   packet_init();
+  telemetry_init();
   freq_measure_init();
 }
 
@@ -69,7 +75,7 @@ void loop()
     change_speed();
   }
   receive_packet();
-  freq_measure();
+  send_telemetry();
 }
 
 void change_speed()
@@ -139,18 +145,31 @@ void receive_packet()
   }
 }
 
-void freq_measure()
+void send_telemetry()
 {
+  float frequency;
+  
   if (FreqMeasure.available()) {
     sum += FreqMeasure.read();
     count += 1;
     if (count > 30) {
-      float frequency = FreqMeasure.countToFrequency(sum / count);
-	  DEBUG_PRINT(F("Frequency: "));
-	  DEBUG_PRINT(frequency);
+      frequency = FreqMeasure.countToFrequency(sum / count);
+	    DEBUG_PRINT(F("Frequency: "));
+	    DEBUG_PRINT(frequency);
       DEBUG_PRINT(F("\n"));
       sum = count = 0;
     }
+
+    telemetry.frequency = frequency;
+
+    radio.stopListening();
+
+    if (!radio.write((const void*)&telemetry, sizeof(telemetry))) {
+        DEBUG_PRINT(F("failed to send telemetry!"));
+        DEBUG_PRINT("\n");
+    }
+
+    radio.startListening();
   }
 }
 
@@ -173,7 +192,8 @@ void freq_measure_init(void)
 void radio_init(void)
 {
   radio.begin();
-  radio.openReadingPipe(1, address);
+  radio.openReadingPipe(1, addresses[0]);
+  radio.openWritingPipe(addresses[1]);
   radio.setPALevel(RF24_PA_LOW);
   radio.startListening();
   delay(10000);
@@ -183,4 +203,9 @@ void packet_init()
 {
   packet.speed = 0;
   packet.save_button = OFF;
+}
+
+void telemetry_init()
+{
+    telemetry.frequency = 0;  
 }
